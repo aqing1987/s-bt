@@ -1,0 +1,47 @@
+#+title: Indoor Navigation with BLUETOOTH beacons
+#+options: ^:nil
+
+* reference
++ https://pan.baidu.com/s/1o8QhaYY
++ code: xy11
+
+* In brief
+Recent technological developments have turned Bluetooth beacons into
+a competitive tool for indoor navigation solutions. BLE beacons present
+significant opportunities for companies to better visitor experience and
+provide all-new opportunities through wayfinding. Beacons have applications in
+a diverse array of industries including retail, museums, and transport.
+
+* Indoor Navigation
+** Wayfinding with different Technologies
+Bluetooth is not the first technology to address the problem of wayfinding.
+Companies have used NFC, QR codes, and GPS to try to tackle it. Many of these
+solutions, however, have proven either ineffectual or impractical. GPS, though
+great for seveeral large-scale or outdoor scenariors, is not suitable to the
+indoors or more precise tracking.
+
+** The difference between WIFI and Bluetooth
+Wifi has become one of the most widespread platforms, and it is one obvious
+answer in proximity marketing. However, it does not necesarily offer the best
+foundation for wayfinding.
+
+There are three primary differences between WIFI and Bluetooth as used in
+indoor navigation.
+
++ Modern WiFi-based systems generally require an entire infrastructure complete
+  with wired access points capable of receiving signals and determining position.
+  Beacons don't require this kind of infrastructure. WIth beacons, smartphones
+  can do all the heavy lifting. Even if you did use the smartphone in a WiFi-
+  based infrastructure, it would still not be practical as the signal strength
+  is most often adapted dynamically by the access points which makes it unusable
+  for a wayfinding system.
+
++ This leads to the second defining factor: accuracy.
+  Accuracy with WiFi will rarely be better than 10 meters. For a lot of use
+  cases, that just isn't enough. On the other hand, Bluetooth-based solutions
+  can achieve 2-3 meter accuracy.
+
++ Finally, indoor navigation with WiFi is not natively supported on iOS. Apps
+  on these phones cannot scan for a WiFi signal. They can't use trilateration
+  or fingerprinting methods used for indoor navigation. While it is possible
+  with Android, the instability of the signal will makes it impractical.
