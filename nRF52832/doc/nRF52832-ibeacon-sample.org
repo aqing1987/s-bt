@@ -1,0 +1,70 @@
+#+title: nRF52832 ibeacon sample
+#+options: ^:nil
+
+* references
++ https://devzone.nordicsemi.com/tutorials/5/
++ http://infocenter.nordicsemi.com/index.jsp?topic=%2Fcom.nordic.infocenter.sdk5.v14.2.0%2Fble_app_ipsp_acceptor.html&cp=4_0_0_4_2_2_16
++ https://devzone.nordicsemi.com/question/13055/how-to-change-the-mac-address-when-the-system-boots-up/
+
+* background
++ nRF52 DK - Development kit for nRF52832
++ SDK version - 14.2.0
++ reference sample - \examples\ble_peripheral\ble_app_beacon
++ test app - Android nRF Connect
+
+One important point to note - if you want to ship a product which is recognised
+by iOS as a beacon by using 0x004C as the company identifier, you need a license
+from Apple to do so. They own that company ID, you can't use it in a product
+without their agreement.
+
+* modify steps
+** change company identifier
+By changing the company identifier, can the beacon type changed to be iBeacon.
+
+From
+#+BEGIN_SRC c
+#define APP_COMPANY_IDENTIFIER          0x0059 // nordic semiconductor
+#+END_SRC
+
+To
+#+BEGIN_SRC c
+#define APP_COMPANY_IDENTIFIER          0x004C // Apple
+#+END_SRC
+
+** change mac address if you need
+
+Note: check the `ble_gap.h' for detail.
+
+The local Bluetooth identify address is the address that identifies this device
+to other peers. The address type must be either BLE_GAP_ADDR_TYPE_PUBLIC or
+BLE_GAP_ADDR_TYPE_RANDOM_STATIC.
+
+The identify address cannot be changed while advertising, scanning or creating
+a connection.
+
+This address will be distrubited to the peer during bonding. If the address
+changes, the address stored in the peer device will not be valid and the ability
+to reconnect using the old address will be lost.
+
+By default the SoftDevice will set an address of type BLE_GAP_ADDR_TYPE_RANDOM_STATIC
+upon being enabled. The address is a random number populated during the IC
+manufacturing process and remains unchanged for the lifetime of each IC.
+
+The following code is used for setting mac, put it before advertising_init()
+
+#+BEGIN_SRC c
+  uint32_t err_code;
+
+  uint8_t my_random_addr[BLE_GAP_ADDR_LEN] = "\x12\x22\x32\x42\x52\x62";
+  ble_gap_addr_t gap_address;
+  gap_address.addr_type = BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+  memcpy(&gap_address.addr, my_random_addr, sizeof(gap_address.addr));
+  gap_address.addr[5] |= 0xc0;
+  err_code = sd_ble_gap_addr_set(&gap_address);
+  APP_ERROR_CHECK(err_code);
+#+END_SRC
+
+* sample code
+Check the sample code from
+
+https://github.com/aqing1987/s-bt/tree/master/nRF52832/s_ble_app_ibeacon_test
