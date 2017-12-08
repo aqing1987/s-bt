@@ -1,0 +1,121 @@
+#+title: nRF52832 change mac address
+#+options: ^:nil
+
+* Reference
++ https://devzone.nordicsemi.com/question/115157/changing-mac-address-in-nrf52/
+
+* Target
+I need multi beacons with multi ble macs in a same nRF52832 PCA10040 board.
+
+* Introduce the bluetooth mac
+check the detail in bluetooth specification version 5.0
+
+vol 6, part B, 1.3
+vol 2, part B, 1.2
+
+** device address
+Devices are identified using a device address. Device addresses may be either
+a public device address or a random device address. A public device address
+and a random device address are both 48 bits in length.
+
+A device shall use at least one type of device address and may contain both.
+
+A device's *Identity Address* is a Public Device Address or Random Static Device
+Address that it uses in packets it transmits. If a device is using Resolvable
+Private Addresses, it shall also have an Identity Address.
+
+*** public device address
+Each bluetooth device shall be allocated a unique 48-bit Bluetooth device
+address (BD_ADDR). The address shall be a 48-bit extended unique identifier
+(EUI-48).
+Notice that you have to obtain a MAC address range from the IEEE registration
+Authority if you want to use public address for your devices.
+
+*** random device address
+The random device address may be of either of the following two sub-types:
++ static address
++ private address
+
+**** static address
+A static address is a 48-bit randomly generated address and shall meet the
+following requirements:
++ The two most significant bits of the address shall be equqal to 1
++ At least one bit of the random part of the address shall be 0
++ At least one bit of the random part of the address shall be 1
+
+Note: If the static address of a device is changed, then the address stored
+in peer devices will not be valid and the ability to reconnect using the old
+address will be lost.
+
+**** private device address
+The private address may be of either of the following two sub-types:
++ Non-resolvable private address
++ Resolvable private address
+
+To generate a non-resolvable address, the device shall generate a 48-bit address
+with the following requirements:
++ The two most significant bits of the address shall be equqal to 0
++ At least one bit of the random part of the address shall be 0
++ At least one bit of the random part of the address shall be 1
++ The address shall not be euqal to the public address
+
+To generate a resolvable private address, the device must have either the
+Local Identity Resolving Key (IRK) or the Peer Identity Resolving Key (IRK).
+The resolvable private address shall be generated with the IRK and a randomly
+generated 24-bit number. The random number is known as prand and shall meet the
+following requirements:
++ The two most significant bits of prand shall be equqal to 0 and 1
++ At least one bit of the random part of prand shall be 0
++ At least one bit of the random part of prand shall be 1
++ The address shall not be euqal to the public address
+* the tests with nRF52832
+the test board is PCA10040 with nRF52832.
+SDK version: nRF5_SDK_14.2.0
+
+Use the api `sd_ble_gap_addr_set' to set address, the address type as below:
+#+BEGIN_SRC c
+#define BLE_GAP_ADDR_TYPE_PUBLIC                        0x00 /**< Public address. */
+#define BLE_GAP_ADDR_TYPE_RANDOM_STATIC                 0x01 /**< Random static address. */
+#define BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE     0x02 /**< Random private resolvable address. */
+#define BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_NON_RESOLVABLE 0x03 /**< Random private non-resolvable address. */
+#+END_SRC
+
+** change mac to be public address
+set code as below:
+
+#+BEGIN_SRC c
+ble_gap_addr_t gap_address;
+gap_address.addr_type = BLE_GAP_ADDR_TYPE_PUBLIC;
+memcpy(&gap_address.addr, "\x62\x52\x42\x09\xe7\x34", sizeof(gap_address.addr));
+err_code = sd_ble_gap_addr_set(&gap_address);
+APP_ERROR_CHECK(err_code);
+#+END_SRC
+
+** change mac to be random static address
+
+make sure the The two most significant bits of the address shall be equqal to 1.
+The code below change the two most significatn bits to be 1.
+#+BEGIN_SRC c
+gap_address.addr[5] |= 0xc0;
+#+END_SRC
+
+set code as below for a random static mac:
+
+#+BEGIN_SRC c
+ble_gap_addr_t gap_address;
+gap_address.addr_type = BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+memcpy(&gap_address.addr, "\x62\x52\x42\x09\xe7\x34", sizeof(gap_address.addr));
+gap_address.addr[5] |= 0xc0;
+err_code = sd_ble_gap_addr_set(&gap_address);
+APP_ERROR_CHECK(err_code);
+#+END_SRC
+
+** change mac to be random private address
+*** change as random private resolvable address
+
+Reference link below for detail:
+https://devzone.nordicsemi.com/question/107812/directed-advertising-with-pre-shared-irk/
+
+* sample code
+check the sample code from
+https://github.com/aqing1987/s-bt/tree/master/nRF52832/s_ble_app_set_mac_test
