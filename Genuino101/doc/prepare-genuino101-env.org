@@ -1,0 +1,58 @@
+#+title: Prepare Genuino101 Environment
+#+options: ^:nil
+
+* reference
++ https://www.arduino.cc/en/Guide/Arduino101
+
+* Genuino101 key feature
+The 101 adds Bluetooth Low Energy capabilities. and that's why I bought it.
+
+* install the Arduino Desktop IDE
+Install arduino 1.8.5 is easy. download it from
+
+https://www.arduino.cc/en/Main/Software#download
+
+* use genuino 101 on the Arduino Desktop IDE
+** add the Intel Curie Core
+Open the Boards Manager:
+Tools -> Boards -> Boards Manager
+
+search Intel Curie or 101, once found, install it.
+
+** install drivers for genuino 101
+Now that the Curie Core is installed, you can connect the board to the computer
+using a standard USB cable. The very first time your computer may go through
+the new hardware installation process.
+
+*** select your board type and port
+From *Tools* select the *Board Arduino/Genuino 101*
+and then the *Port* that is labeled with the same name.
+
+** open your first sketch
+Everything is now ready to upload your first sketch.
+
+File -> Examples -> 01.Basic -> Blink
+
+This sketch just flashes the built in LED connected to Digital pin 13 at one
+second pace for on and off.
+
+** upload the program
+select
+
+Sketch -> Upload
+
+*** error fix
+**** openPort(); Exception type - Permission denied
+To fix this issue, change serial permission before run.
+#+BEGIN_SRC sh
+sudo chmod 666 /dev/ttyACM0
+#+END_SRC
+
+**** ERROR: Timed out waiting for Arduino 101 on /dev/ttyACM0
+the *Intel Curie Boards* version is *2.0.2*.
+
+do the command below:
+#+BEGIN_SRC sh
+chmod +x ~/.arduino15/packages/Intel/hardware/arc32/2.0.2/scripts/create_dfu_udev_rule
+sudo ~/.arduino15/packages/Intel/hardware/arc32/2.0.2/scripts/create_dfu_udev_rule
+#+END_SRC
