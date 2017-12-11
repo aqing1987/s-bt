@@ -5,4 +5,5 @@ target/
 *.DS_Store
 JLinkLog.txt
 .gdbinit
-
+hex/
+pca10040e/
