@@ -1,0 +1,349 @@
+#+title: nRF52832 SDK14.2.0 advertising tutorial
+#+options: ^:nil
+
+* reference
+https://devzone.nordicsemi.com/tutorials/5/
+https://devzone.nordicsemi.com/blogs/782/bluetooth-smart-and-the-nordics-softdevices-part-1/
+
+* experiment steps
+** change address type
+check https://devzone.nordicsemi.com/question/6496/gap-address-types/
++ Public address
+  This is a global, fixed address. It must be registered with the IEEE Registration
+  Authority and will never change during the lifetime of the device.
+
++ Random Static address
+  A random static address is simply a random number that can either be generatd
+  every time the device boots up or can stay the same for the lifetime of the
+  device. But it cannot be changed within a single power cycle of the device.
+
++ Private Resolvable address
+  Those are generated from an identity resolving key (IRK) and a random number,
+  and they can be changed often (even during the lifetime of a connection) to
+  avoid the device being identified and tracked by an unknown scanning device.
+  Only devices that possess the IRK distributed by the device using a private
+  resolvable address can actually resolve that address, allowing the to identify
+  the device.
+
++ Private Non-Resolvable address
+  Not very commonly used, a random number that you can change anytime.
+
+The default address type in SoftDevice is "Random Static address". Try to go
+into *gap_params_init()* in main.c and add these code at the end of the function:
+#+BEGIN_SRC c
+    ble_gap_privacy_params_t ble_gap_privacy_params = {0};
+	ble_gap_privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_DEVICE_PRIVACY;
+	ble_gap_privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
+	ble_gap_privacy_params.private_addr_cycle_s = 30;
+	ble_gap_privacy_params.p_device_irk = NULL;
+	err_code = sd_ble_gap_privacy_set(&ble_gap_privacy_params);
+	APP_ERROR_CHECK(err_code);
+#+END_SRC
+check
+https://devzone.nordicsemi.com/question/111596/how-to-set-ble-gap-address-type-to-random_private_resolvable/
+
+This Should set the address type to "Private Resolvable address". The Address type
+will still show up as "Random", but try to reset your board a few times. You
+should see that after each reset your device shows up with a different address
+in the device list. However, the mac will not change in my hand, if you know how
+to fix it please let me know, thanks.
+
+** change advertising name
+An advertising packet *can consist of no more than 31 bytes*.
+
+change the advertising name type to Shortened Local Name,
+#+BEGIN_SRC c
+#define DEVICE_NAME                "ThisIsAReallyLongName"
+
+init.advdata.name_type = BLE_ADVDATA_SHORT_NAME;
+#+END_SRC
+
+Then right below this add the line:
+#+BEGIN_SRC c
+init.advdata.short_name_len = 6; // Advertise only first 6 letters of name
+#+END_SRC
+
+Compile and download again. In the "Discovered devices" list your device should
+now show up with the name "ThisIs", the first 6 letters of the full name.
+However, if you connect to your device by clicking "Select device", "Connect"
+and then "Discover services" you will see that full name is still there.
+
+** manufacturer specific data
+#+BEGIN_SRC c
+init.advdata.p_manuf_specific_data
+#+END_SRC
+is a field where you can place whatever data you want.
+
+add code below to advertising_init():
+#+BEGIN_SRC c
+// variable to hold manufacturer specific data
+	ble_advdata_manuf_data_t manuf_data;
+
+	uint8_t data[] = "SomeData!"; // our data to advertise
+	manuf_data.company_identifier = 0x0059; // Nordics company ID
+    manuf_data.data.p_data = data;
+    manuf_data.data.size = sizeof(data);
+
+    init.advdata.p_manuf_specific_data = &manuf_data;
+#+END_SRC
+
+Now compile, download and check. You can see that there is a new field in the
+"Advertising Data" list called "Manufacturer data". It contains a cryptic string
+of hexadecimal numbers. The first two numbers are the compnay ID (0x0059) with the
+least significant byte first. The company ID is a unique 16-bit value assigned
+to Bluetooth SIG members. It is not allowed to broadcast a custom company ID
+value without being a member. If you are curious you can see a list of the
+Bluetooth SIG member IDs from:
+https://www.bluetooth.org/en-us/specification/assigned-numbers/company-identifiers
+
+As described at the bottom of the page the value 0xFFFF "may be used in the internal
+and interoperability tests before a Company ID has been assigned. This value
+shall not be used in shipping and products". When you are ready for shipping
+you need to apply for a Bluetooth SIG membership to get your own unique ID.
+"Adopter level" membership is free, but you will need to be associated with
+a valid company. The next 10 bytes in the manufacturer specific data field are
+the actual data. If you compare with an ASCII table you will recognize the
+string "SomeData!", most significatnt byte first this time. The last two zeros
+at the end represent a termination character in the string.
+
+*** add transmit power to advdata
+This value might, e.g., enable other units to roughly estimate the distance to
+your device. (keep in mind that you will have to use one of the valid tx power
+levels in nRF52 Product Specification). It is also important to know that this
+doesn't change the actual transmit power, just the information that is advertised.
+
+add code below in advertising_init()
+#+BEGIN_SRC c
+int8_t tx_power = 0x04;
+
+init.advdata.short_name_len = 2;
+init.advdata.p_tx_power_level = &tx_power;
+#+END_SRC
+
+*Note:* To add the tx power level according to the TLV format, (Type: 1B, Length: 1B,
+Value: 1B) at least 3 Bytes needed, the content size should <= 31 bytes. So, we
+change the name length to 2. You can check:
+https://devzone.nordicsemi.com/question/37952/setting-tx_power_level/
+
+*** set the "include_appearance" field in "advdata"
+set code below in advertising_init()
+#+BEGIN_SRC c
+init.advdata.include_appearance = true;
+#+END_SRC
+
+set code below in gap_params_init()
+#+BEGIN_SRC c
+err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_HID_MOUSE);
+APP_ERROR_CHECK(err_code);
+#+END_SRC
+
+The appearance feature might be useful to developers of e.g. mobile phone apps.
+If you have a BLE enabled phone (or a laptop) your kit should now show up with
+the name "Th" and a computer mouse icon if you search for BLE devices.
+
+*Tips:* Your advertisement packet is already getting dangerously full so you
+might want to shorten your manufacturer data size or device name.
+
+** Scan response data
+But what if you really, really want to advertise more than 31 bytes? Then there
+is a solution for you and that is the Scan response data. This is an optional
+"secondary" advertising payload which allows scanning devices that detect an
+advertising device to request a second advertising packet. This allows you to
+send two advertising frames with a total payload of 62 bytes.
+
+add code below in advertising_init()
+#+BEGIN_SRC c
+    ble_advdata_manuf_data_t manuf_data_response;
+	memset(&manuf_data_response, 0, sizeof(manuf_data_response));
+
+	uint8_t data_response[] = "my hello response";
+	manuf_data_response.company_identifier = 0x0059;
+	manuf_data_response.data.p_data = data_response;
+	manuf_data_response.data.size = sizeof(data_response);
+
+	init.srdata.name_type = BLE_ADVDATA_NO_NAME;
+	init.srdata.p_manuf_specific_data = &manuf_data_response;
+#+END_SRC
+
+compile, download and see what happens.
+* sample code
+download the sample code from
+https://github.com/aqing1987/s-bt/tree/master/nRF52832/s_ble_app_advertising_tutorial
+
+then put it into the directoy
+#+BEGIN_SRC sh
+nRF5_SDK_14.2.0_17b948a/examples/ble_peripheral
+#+END_SRC
+* base knowledge
+Bluetooth Smart defined 4 GAP roles: Broadcaster, Observer, Central, Peripheral
+[Section 6.2 Vol 1 Part A] and 5 Link layer states: Standby, Advertising,
+Scanning, Initiating, Connection [Section 1.1 Vol 6 Part B]. One device may have
+one or multiple roles, working in one or multiple states at the same time.
+
+In this episode we focus on Advertising state of the Broadcaster and the Peripheral.
+
+** Theory about adverting
+*** what is advertising
+Advertising is the act of broadcasting data. We broadcast data for device discovery
+and data publishing. There are 2 types of data packets that can be transmitted,
+Advertising packet and Scan Response packet, each can have up to 31 bytes payload.
+The advertiser address is included in the broadcast data in addition to the payload.
+
+The advertiser constantly broadcasts advertising packets with an advertising interval.
+Advertising interval can be changed on the fly. There is a requirement for minimum and
+maximum advertising interval.
+
+For normal, undirected advertising, the advertising intervals ranges from 20ms
+to 10.24s (Section 7.8.5 Part E Vol2)
+
+The scan response packet is transmitted by the advertiser when it receives a scan
+request from a scanner. The advertiser have to enter a RX period to wait for the
+scan request. This RX period can be used to receive Connect Request as well.
+
+In some applications when we don't expect a connection and don't have extra data
+in scan response packet, we can advertise in non-connectable mode and can skip
+the RX period to save power. The beacon application is one of the use cases.
+
+Note that all Advertising packet, Scan Request packet, Scan Response packet share
+the same on-air Access Address = *0x8E89BED6*. This common address allows any
+device to scan and receive advertising/scan response data.
+
+Bluetooth Smart uses 40 RF channels in the ISM band (2.4GHz). These RF channels
+have center frequencies 2402 + K*2MHz where k ranges from 0 to 39. Note that k
+is not the same as "Channel Index", or channel number (Section 1.4 Vol 6 Part B).
+
+Three of them is dedicated for advertising which is channel 37 (2402MHz), 38(2426MHz),
+and 39 (2480MHz). They were selected to avoid interference with the busy channels
+used by Wifi.
+
+In the implementation of SoftDevice stack, by default it transmit the advertising
+packet in all 3 channels on every advertising event, on channel 37, 38, 39 respectively.
+
+*** Broadcast topology
+When advertising, the network topology is Broadcast topology. There could be
+multiple advertisers and multiple scanner at the same time.
+
+Note that one device can do scanning and adverting simultaneously. And one can
+be in a connection with a central or peripheral and can do advertising at the
+same time.
+
+The only packet the active scanner can send to advertiser is the Scan Request
+packet, which contain only the scanner address. Passive scanner doesn't do
+Scan Request.
+
+*** Advertising types and whitelisting
+There are 4 defined types of Advertising (Section 2.3.1 Vol 6 Part B)
+
++ ADV_IND: *connectable undirected advertising*. This is the normal advertising
+  type where any device can send scan response packet and connect request to
+  the advertiser.
+
+
++ ADV_DIRECT_IND: *connectable directed advertising*. You use this to direct your
+  advertise packet to one specific central to ask for connection. The packet is
+  still a broadcast packet but other scanners will ignore the packet if the peer
+  address is not matched with them. And connect request or scan request from
+  unmatched central will be ignored by the advertiser. Directed advertising usually
+  comes with high duty cycle with interval fix at 3.75ms. For low duty cycle directed
+  advertising, it's configurable and should be <10ms. (Section 4.4.2 Part B Vol6)
+
+
++ ADV_SCAN_IND: *scannable undirected advertising*. This advertising packet won't
+  accept connect request but accept scan request.
+
+
++ ADV_NONCONN_IND: *non-connectable undirected advertising*. This is non RX mode,
+  which mean the advertiser will not accept any connect request or scan request.
+  Staying in this mode the advertiser doesn't need to switch to receiver mode
+  and can save power. The main application for this is beacon application, where
+  maximize battery life time is most important and the beacon doesn't need to
+  interact with the scanner.
+
+*** Advertise with Whitelist
+The advertiser can use a whitelist to limit the interaction to a number of scanner/central
+device. The whitelist contains an array of the peer device addresses or IRK numbers
+(when central use resolvable random address). It will reject packets from scanners/centrals
+whose addresses are not in the list. Whitelist can be configured to filter scan
+request packets, connect request packets or both.
+*** bonded
+This shows whether the device is bonded to another device or not. The purpose
+of bonding is:
+#+BEGIN_QUOTE
+The purpose of bonding is to create a relation between two Bluetooth devices
+based on a common link key (a bond). The link key is created and exchanged
+(pairing) during the bonding procedure and is expecteed to be stored by both
+Bluetooth devices, to be used for future authentication.
+#+END_QUOTE
+** Setting up and start advertising with SoftDevice
+*** APIs provided by the softdevice:
++ set, clear or update advertising data and the scan response data
+  #+BEGIN_SRC c
+  sd_ble_gap_adv_data_set(uint8_t const* p_data, uint8_t dlen, uint8_t const* p_sr_data, uint8_t srdlen)
+  #+END_SRC
+
++ start advertising
+  #+BEGIN_SRC c
+  sd_ble_gap_adv_start(ble_gap_adv_params_t const* p_adv_params, uint8_t conn_cfg_tag)
+  #+END_SRC
+
+---
+Check how the 31 bytes Advertising data and Scan reponse data should look like
+(chapter 11, part C, vol3)
+
+It's up to the application to prepare the advertising data and set it in the
+softdevice using *sd_ble_gap_adv_data_set()*.
+
+Note:
++ The data in the input parameter is an array of uint8_t. You need to encode data
+  to match with this.
++ You should set the length of the advertising data (dlen) to match with the significant
+  part length so that the non-significant part (zero padding) will not be transferred
+  over the air.
++ 31 bytes includes also the overhead so the actual payload for application is
+  27 bytes when using manufacturing data type.
++ Flags can only be excluded if non-connectable advertising is used.
+---
+
+After you have set-up the advertising packet you can tell the softdevice to start
+advertising by calling *sd_ble_gap_adv_start()*. For this call, you need to configure:
+
++ Advertising interval (the period between each advertising)
++ Advertising timeout: how long you want to advertise. You will receive
+  BLE_GAP_EVT_TIMEOUT event after this timeout.
++ Advertising types (connectable, non-connectable, directed, etc)
++ The peer address if you do directed advertising
++ The whitelist list if you have
++ Filter policy: Choose how to use the whitelist, filter scan request, connect
+  request or both
++ Channel(s) you want to advertise, you can choose one or two or all 3 channels
+  to advertise
+
+*** GAP events you may receive when advertising
++ BLE_GAP_EVT_TIMEOUT
+  Occurs when the advertising timeout is passed. The application can decide to
+  continue advertising in different mode or to enter sleep mode. The application
+  should check the src parameter to check if the timeout event is from adverting
+  timeout or not.
+
+
++ BLE_GAP_EVT_SCAN_REQ_REPORT
+  the application receives this event when there is a scan request received by
+  the advertiser. The event comes with address of the peer device and RSSI value.
+  Note: you only get this event if you enable it using the option API
+  sd_ble_opt_set()
+
+
++ BLE_GAP_EVT_CONNECTED
+  You receive this when there is a central device send connect request and the
+  connection is established.
+
+*** FAQ
++ Why am I seeing the advertising period is not the same between each packet?
+  Bluetooth spec defined a random delay (0~10ms) on each advertising peroid
+  to perturb interval and avoid interference (Section 4.4.2.2 part B vol6)
+
++ If I want to advertise my custom data how should I put it in the advertising packet?
+  You should use Manufacturer Specific Data ADtype (0xFF). Note that with that
+  type, the 2 first bytes are for Company ID.
+  check:
+  https://www.bluetooth.com/specifications/assigned-numbers/generic-access-profile
