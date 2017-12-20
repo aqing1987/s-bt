@@ -1,0 +1,377 @@
+#+title: nRF52832 ble tutorial service
+#+options: ^:nil
+
+* reference
++ https://devzone.nordicsemi.com/tutorials/8/
++ https://github.com/NordicPlayground/nrf51-ble-tutorial-service
++ https://www.bluetooth.com/specifications/gatt/generic-attributes-overview
++ https://devzone.nordicsemi.com/question/60/what-is-connection-parameters/
+
+* my bluetooth environment
++ nRF52 DK Development kit
++ Keil V5.x
++ SDK V14.2.0
+
+* the tutorial service sample
+** the mandatory services
+Even before we have done anything, there are already two mandatory services set
+up for us.
+*** the Generic Access Service
++ The Generic Access Service
+  Service UUID 0x1800. Three mandatory characteristics:
+  + Characteristic: Device name. UUID 0x2A00
+  + Characteristic: Appearance. UUID 0x2A01
+  + Characteristic: Peripheral Preferred Connection Parameters UUID 0x2A04
++ The Generic Attribute service.
+  Service UUID 0x1801. One optional characteristic:
+  + Characteristic: Service Changed. UUID 0x2A05
+
+visit
+https://www.bluetooth.com/specifications/gatt/viewer?attributeXmlFile=org.bluetooth.service.generic_access.xml
+
+The Generic Access Service contains generic information about the device. All
+available Characteristics are readonly. You can recognize a characteristic holding
+the device name "OurService". The second characteristic holds the appearance value.
+The third characteristic holds various parameters used to establish a connection.
+You can recognise values from the #defines in the example called: MIN_CONN_INTERVAL,
+MAX_CONN_INTERVAL, SLAVE_LATENCY, and CONN_SUP_TIMEOUT.
+
+The connection parameters for a BLE connection is a set of parameters that determine
+when and how the Central and a Peripheral in a link transmits data. It is always
+the Central that actually sets the connection parameters used, but the Peripheral
+can send a so-called Connection Parameter Update Request, that the Central can
+then accept or reject.
+
+There are basically three different parameters:
++ Connection interval
+  Determines how often the Central will ask for data from the peripheral. When
+  the Peripheral requests an update, it supplies a maximum and a minimum wanted
+  interval. The connection interval must be between 7.5ms and 4s.
++ Slave latency
+  By setting a non-zero slave latency, the Peripheral can choose to not answer
+  when the Central asks for data up to the slave latency number of times. However,
+  if the Peripheral has data to send, it can choose to send data at any time. This
+  enables a peripheral to stay sleeping for a longer time, if it doesn't have data
+  to send, but still send data fast if needed. The text book example of such
+  device is for example keyboard and mice, which want to be sleeping for as long
+  as possible when there is no data to send, but still have low latency (and for
+  the mouse: low connection interval) when needed.
++ Connection supervision timeout
+  This timeout determines the timeout from the last data exchange till a link is
+  considered lost. A central will not start trying to reconnect before the timeout
+  has passed, so if you have a device which goes in and out of range often, and
+  you need to notice when that happens, it might make sense to have a short timeout.
+
+For a BLE link the connection parameters control the frequency at which data can
+be exchanged between the peripheral and central once a BLE link has been established
+between the two. These parameters are negotiated between the central and peripheral
+during link establishment.
+
+The connection interval and slave latency typically affect the performance of a
+BLE link the most. The lower the slave latency and faster the connection interval
+the faster the effective data transfer rate between the peripheral and central.
+On the other hand this also leads to higher average current consumption in the
+peripheral.
+
+*** the Generic Attribute Service
+The second service is the Generic Attribute Service. Simply put, this service can
+be used to notify the central of changes made to the fundamental structure of services
+and characteristics on the peripheral.
+
+** add first service
+*** declare a service structure
+First of all we need a place to store all data and information relevant to our
+service and to do this we will use the *ble_os_t* structure. As you can see in
+our_service.h. The *service_handle* is a number identifying this particular
+service and is assigned by the SoftDevice. Declare a variable called *m_our_service*
+of type *ble_os_t* in main.c so that we can pass it to various functions and
+have complete control of our service.
+
+*** initialize the service
+In main.c add *services_init()*. Inside this function we call *our_service_init()*.
+It takes a pointer to a *ble_os_t* struct as a parameter so make sure that you
+point to our *m_our_service* variable.
+#+BEGIN_SRC c
+our_service_init (&m_our_service);
+#+END_SRC
+
+*** add UUIDs to ble stack table
+Look up the definition of *our_service_init()* in our_service.c. We create a UUID
+for our service. Since we are going to make a custom service we will use the
+defined base UUID together with a 16-bit UUID.
+
+add code below:
+#+BEGIN_SRC c
+uint32_t   err_code;
+ble_uuid_t        service_uuid;
+ble_uuid128_t     base_uuid = BLE_UUID_OUR_BASE_UUID;
+service_uuid.uuid = BLE_UUID_OUR_SERVICE;
+err_code = sd_ble_uuid_vs_add(&base_uuid, &service_uuid.type);
+APP_ERROR_CHECK(err_code);
+#+END_SRC
+What this code does is to create two variables. One will hold our 16-bit service
+UUID and the other the base UUID. In the fourth line we add our vendor specific
+UUID (hence the 'vs') to a table of UUIDs in the BLE stack.
+
+Using a vendor specific UUID is basically a two-step process
++ add your custom base UUID to the stack
+  by using sd_ble_uuid_vs_add(). store the value returned to you in the p_type
+  parameter of this function call.
++ set the type of all ble_uuid_t
+  that should use this base to the value returned to you from sd_ble_uuid_vs_add()
+  When you set this field to your custom type instead of to BLE_UUID_TYPE_BLE, the
+  value will be used on top of the custom base UUID you specified instead of on
+  top of the Bluetooth SIG base.
+
+Behind the scenes, sd_ble_uuid_vs_add() will add the base UUID to the SoftDevice's
+internal list of base UUIDs, and return the table index for this UUID in the type
+field. When using the type in a ble_uuid_t later, the SoftDevice can look up the
+base used in this same table by using this index.
+
+*** error fix
+You can skip this step if there is no *No Memory for operation* issue.
+
+When I debug this code, I got err_code = 0x04 from *sd_ble_gatts_service_add()*
+which means *No Memory for operation*. to fix this issue, change code in
+sdk_config.h from
+#+BEGIN_SRC c
+#ifndef NRF_SDH_BLE_VS_UUID_COUNT
+#define NRF_SDH_BLE_VS_UUID_COUNT 0
+#endif
+#+END_SRC
+
+to
+#+BEGIN_SRC c
+#ifndef NRF_SDH_BLE_VS_UUID_COUNT
+#define NRF_SDH_BLE_VS_UUID_COUNT 7
+#endif
+#+END_SRC
+
+Then modify *Options for Target 'nrf52832_xxaa'*, change IRAM1 start address.
+The value can be got by debug. the debug path as below:
+#+BEGIN_SRC c
+ble_stack_init(void)
+  nrf_sdh_ble_enable(&ram_start)
+    sd_ble_enable(p_app_ram_start);
+    if (*p_app_ram_start != app_ram_start_link) {
+        NRF_LOG_WARNING("RAM starts at 0x%x, can be adjusted to 0x%x.",
+                        app_ram_start_link, *p_app_ram_start);
+
+        NRF_LOG_WARNING("RAM size can be adjusted to 0x%x.",
+                        ram_end_address_get() - (*p_app_ram_start));
+    }
+#+END_SRC
+
+Then set the IRAM1 start value to be the value showed in *p_app_ram_start.
+
+*** add our service
+Now initialize our service. Type in the following right after the previous code:
+#+BEGIN_SRC c
+err_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY,
+                                    &service_uuid,
+                                    &p_our_service->service_handle);
+APP_ERROR_CHECK(err_code);
+#+END_SRC
+
+The *sd_ble_gatts_service_add()* function takes three parameters. In the first
+parameter we specify that we want a primary service. The other option here is
+to use BLE_GATTS_SRVC_TYPE_SECONDARY to create a secondary service. The use of
+secondary services are rare, but sometimes used to nest services inside other
+services. The second parameter is a pointer to the service UUID that we created.
+By passing this variable to *sd_ble_gatts_service_add()* our service can be
+uniquely identified by the BLE stack.
+
+Compile, download, and open nRF Connect again. Hit connect and do another service
+discovery. Now you should see our service with its custom UUID at the bottom.
+You can recognize the base UUID from the *#define in our_service.h* and if you
+look closely you should also recognize our 16-bit service UUID:
+0000ABCD-1212-EFDE-1523-785FEF13D123
+
+#+BEGIN_QUOTE
+Either iOS or nRFConnect caches some ble information, so connecting/reconnecting is
+useless without turning the phone's ble off and on. That refreshes everything
+and the new characteristics show up. Figured it out by trying to delete services
+and they stayed on nRFConnect even after they had been deleted from code and
+reflashed.
+#+END_QUOTE
+
+When you connect to your device using nRF Connect. some events occur in the BLE
+stack.
+The first event is a Generic Access Profile(GAP) event, BLE_GAP_EVT_CONNECTED,
+indicating that a connection has been set up with connection handle value 0x00.
+If you ever make an application that has several connections you will get several
+connection handles, each with a unique handle value. After a few seconds you will
+get the BLE_GAP_EVT_CONN_PARAM_UPDATE event indicating that the nRF Connect and
+your device have renegotiated the connection parameters.
+
+** advertising
+*** declare variable holding our service UUID
+Inside the *advertising_init()* function in main.c declare a variable holding
+our service uuid like this:
+#+BEGIN_SRC c
+ble_uuid_t m_adv_uuids[] = {BLE_UUID_OUR_SERVICE, BLE_UUID_TYPE_VENDOR_BEGIN};
+#+END_SRC
+
+BLE_UUID_OUR_SERVICE is our service UUID and BLE_UUID_TYPE_VENDOR_BEGIN indicates
+that it is a part of a vendor specific base UUID. More specifically BLE_UUID_TYPE_VENDOR_BEGIN
+is an index pointing to our base UUID in the table of UUIDs that we initated in
+*our_service_init()*.
+
+*** declare and instantiate the scan response
+add the UUID to the scan response packet like this:
+#+BEGIN_SRC c
+init.srdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+init.srdata.uuids_complete.p_uuids = m_adv_uuids;
+#+END_SRC
+
+** summary
+So now the first basic service has been setup. If you want to add more srevices
+you can easily just replicate the *our_service_init()* function and define more
+service UUIDs.
+
+Note: the characteristics have not been added yet.
+** get the tutorial sample
+you can get the tutorial sample from
+https://github.com/aqing1987/s-bt/tree/master/nRF52832/s_ble_app_service_tutorial
+
+and then put it to
+#+BEGIN_QUOTE
+nRF5_SDK_14.2.0_17b948a/examples/ble_peripheral
+#+END_QUOTE
+
+* base knowledge
+** the Generic Attribute Profile (GATT)
+#+BEGIN_QUOTE
+The GATT Profile specifies the structure in which profile data is exchanged.
+This structure defines basic elements such as services and characteristics,
+used in a profile.
+#+END_QUOTE
+
+In other words, it is a set of rules describing how to bundle, present and
+transfer data using BLE. Read Bluetooth Core Specification v5.0, vol.3 Part G.
+
+The Generic Attributes (GATT) define a hierarchical data structure that is
+exposed to connected BLE devices. GATT profiles enable extensive innovation
+while still maintaining full interoperability with other Bluetooth devices.
+The profile describes a use case, roles and general behaviors based on the GATT
+functionality. Services are collections of characteristics and relationships
+to other services that encapsulate the behavior of part of a device. This also
+includes hierarchy of services, characteristics and attributes used in the attribute
+server.
+
+GATT is built on top of the Attribute Protocol (ATT), which uses GATT data to
+define the way that two Bluetooth Low Energy devices send and receive standard
+messages. Note that GATT is not used in Bluetooth BR/EDR implementations, which
+use only adopted profiles.
+
+The top level of the hierarchy is a profile, which is composed of one or more
+services necessary to fulfill a use case. A service is composed of characteristics
+or references to other services.
+
+GATT groups these services to encapsulate the behavior of part of a device, and
+describes a use case, roles and general behaviors based on the GATT functionality.
+
+** services
+The Bluetooth Core Specification defines a service like this:
+#+BEGIN_QUOTE
+A service is a collection of data and associated behaviors to accomplish a
+particular function or feature. A service definition may contain mandatory
+characteristics and optional characteristics.
+#+END_QUOTE
+
+In Other words, a service is a collection of information, like e.g. values of
+sensors. Bluetooth SIG has predefined certain services. For example they have
+defined a service called Heart Rate service. The reason why they have done this
+is to make it easier for developers to make apps and firmware compatible with
+the standard Heart Rate service. However, this does not mean that you can't make
+your own heart rate sensor based on your own ideas and service structures.
+
+** Characteristics
+The Bluetooth Core Specification defines a service like this:
+#+BEGIN_QUOTE
+A characteristic is a value used in a service along with properties and configuration
+information about how the value is accessed and information about how the value
+is displayed or represented.
+#+END_QUOTE
+
+In other words, the characteristic is where the actual values and information is
+presented. Security parameters, units and other metadata concerning the information
+are also encapsulated in the characteristics.
+
+An analogy might be a storage room filled with filing cabinets and each filing
+cabinet has a number of drawers. The GATT profile in this analogy is the storage
+room. The cabinets are the services, and the drawers are characteristics holding
+various information. Some of the drawers might also have locks on them restricting
+the access to its information.
+
+Imagine a heart rate monitor watch for example. Watches like this typically use
+at least two services:
+
++ A Heart rate service. It encapsulates three characteristics:
+  + A mandatory Heart Rate Measurement characteristic holding the heart rate value.
+  + An optional Body Sensor Location characteristic.
+  + A conditional Heart Rate Control Point characteristic.
+
++ A Battery service
+  + Mandatory Battery level characteristic.
+
+Now why bother with this? Why not just send whatever data you need directly
+without the fuzz of bundling it in characteristics and services? The reasons are
+flexibility, efficiency, cross platform compatibilities and ease of implementation.
+When iPhones, Android tablets or Windows laptops discover a device advertising a
+heart rate service they can be 100% sure to find at least the heart rate measurement
+characteristic and the characteristic is guaranteed to be presented in a standardized
+way. If a device contains more than one service you are free to pick and choose
+the services and characteristics you like. By bundling information this way devices
+can quickly discover what information is available and communicate only what is
+strictly needed and thereby save precious time and energy. Remember that BLE is
+all about low energy.
+
+To continue the analogy: the storage room is located in a small business office
+and has two filing cabinets. The first cabinet is used by the accountants. The
+drawers contain files with financial details of the business, sorted by date.
+The drawers are locked and only the accountants and the upper management have
+access to them. The second cabinet is used by Human Resources and contains records
+over the employees, sorted in alphabetical order. These drawers are also locked
+and only HR and upper management have access to them. Everyone in the business
+knows where the storage room is and what it is for, but only some people have
+access to it and use it. It ensures efficiency, security and order.
+
+** Universally Unique ID (UUID)
+A UUID is an abbreviation you will see a lot in the BLE world. It is a unique
+number used to identify services, characteristics and descriptors, also known as
+attributes. These IDs are transmitted over the air so that e.g. a peripheral can
+inform a central what services it provides. To save transmitting air time and
+memory space in your nRF51 there are two kinds of UUIDs.
+
+The first type is a short 16-bit UUID. The predefined Heart rate service, e.g.,
+has the UUID 0x180D and one of its enclosed characteristics, the Heart Rate
+Measurement characteristic, has the UUID 0x2A37. The 16-bit UUID is energy and
+memory efficient, but since it only provides a relatively limited number of
+unique IDs there is a rule; you can only transmit the predefined Bluetooth SIG
+UUIDs directly over the air. Hence there is a need for a second type of UUID
+so you can transmit your own custom UUIDs as well.
+
+The second type is a 128-bit UUID, sometimes referred to as a vendor specific
+UUID. This is the type of UUID you need to use when you are making your own
+custom services and characteristics. It looks something like this:
+4A98xxxx-1CC4-E7C1-C757-F1267DD021E8 and is called the "base UUID". The four x's
+represent a field where you will insert your own 16-bit IDs for your custom
+services and characteristics and use them just like a predefined UUID. This way
+you can store the base UUID once in memory, forget about it, and work with 16-bit
+IDs as normal. You can generate base UUIDs using nRFgo Studio.
+
+A little fun fact about UUIDs: There is no database ensuring that no one in the
+world is sharing the same UUID.
+** client and server roles
+GATT defines client and server roles. GATT procedures can be considered to be
+split into three basic types: Discovery procedures, Client-initiated procedures
+and Server-initiated procedures. The GATT server stores the data transported
+over the ATT and accepts ATT requests, commands and confirmations from the GATT
+client. The GATT server sends responses to requests and sends indications and
+notifications asynchronously to the GATT client when specified events occur on
+the GATT server. GATT also specifies the format of data contained on the GATT
+server.
+
+To see all the adopted GATT-based specifications, visit
+https://www.bluetooth.com/specifications/gatt
